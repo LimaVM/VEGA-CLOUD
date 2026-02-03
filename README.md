@@ -1,4 +1,4 @@
-# Vega Cloud v9.1.3
+# Vega Cloud v9.1.4
 
 🚀 **Plataforma de containers LXC temporários gratuitos** com Ubuntu 24.04 LTS.
 

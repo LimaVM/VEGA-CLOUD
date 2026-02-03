@@ -2,7 +2,7 @@
 
 > Plataforma de Containers LXC Temporários & Premium
 
-**Versão**: 9.1.3
+**Versão**: 9.1.4
 **Última Atualização**: 2026-02-03
 
 ---
