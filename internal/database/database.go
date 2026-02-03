@@ -592,6 +592,12 @@ func SetUserPremium(userID int64, premium bool) error {
 	return err
 }
 
+// SetUserAdmin atualiza o status de administrador de um usuário
+func SetUserAdmin(userID int64, isAdmin bool) error {
+	_, err := DB.Exec("UPDATE users SET is_admin = ? WHERE id = ?", isAdmin, userID)
+	return err
+}
+
 // SetUserBan atualiza o status de banimento do usuário
 func SetUserBan(userID int64, banned bool, reason string) error {
 	_, err := DB.Exec("UPDATE users SET is_banned = ?, ban_reason = ? WHERE id = ?", banned, reason, userID)
@@ -601,6 +607,12 @@ func SetUserBan(userID int64, banned bool, reason string) error {
 // UpdateUserPassword atualiza a senha de um usuário
 func UpdateUserPassword(userID int64, passwordHash string) error {
 	_, err := DB.Exec("UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, userID)
+	return err
+}
+
+// DeleteSessionsByUserID remove todas as sessões ativas de um usuário
+func DeleteSessionsByUserID(userID int64) error {
+	_, err := DB.Exec("DELETE FROM sessions WHERE user_id = ?", userID)
 	return err
 }
 

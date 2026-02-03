@@ -198,6 +198,10 @@ type TogglePremiumRequest struct {
 	Premium bool `json:"premium"`
 }
 
+type ToggleAdminRequest struct {
+	Admin bool `json:"admin"`
+}
+
 func (h *Handlers) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	// Pega ID da URL
 	// /api/admin/users/{id}
@@ -295,6 +299,87 @@ func (h *Handlers) ToggleUserPremium(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("💎 Status Premium alterado para %v (User %d)", req.Premium, userID)
 	h.respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (h *Handlers) ToggleUserAdmin(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/users/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 1 {
+		h.respondError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	userID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	var req ToggleAdminRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "JSON inválido")
+		return
+	}
+
+	requestingUser := h.getUser(r)
+	if requestingUser.ID == userID {
+		h.respondError(w, http.StatusBadRequest, "Você não pode alterar seu próprio nível de admin")
+		return
+	}
+
+	targetUser, err := database.GetUserByID(userID)
+	if err != nil {
+		h.respondError(w, http.StatusNotFound, "Usuário não encontrado")
+		return
+	}
+
+	if targetUser.Username == "vega-admin" {
+		h.respondError(w, http.StatusForbidden, "Não é possível alterar permissões do super-admin")
+		return
+	}
+
+	if err := database.SetUserAdmin(userID, req.Admin); err != nil {
+		h.respondError(w, http.StatusInternalServerError, "Erro ao atualizar status admin")
+		return
+	}
+
+	log.Printf("🛡️ Admin %s alterou permissão admin do usuário %d para %v", requestingUser.Username, userID, req.Admin)
+	h.respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (h *Handlers) RevokeUserSessions(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/admin/users/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 1 {
+		h.respondError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	userID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		h.respondError(w, http.StatusBadRequest, "ID inválido")
+		return
+	}
+
+	requestingUser := h.getUser(r)
+	if requestingUser.ID == userID {
+		h.respondError(w, http.StatusBadRequest, "Você não pode revogar suas próprias sessões")
+		return
+	}
+
+	targetUser, err := database.GetUserByID(userID)
+	if err != nil {
+		h.respondError(w, http.StatusNotFound, "Usuário não encontrado")
+		return
+	}
+
+	if err := database.DeleteSessionsByUserID(userID); err != nil {
+		h.respondError(w, http.StatusInternalServerError, "Erro ao revogar sessões")
+		return
+	}
+
+	log.Printf("🔒 Admin %s revogou sessões do usuário %s (%d)", requestingUser.Username, targetUser.Username, userID)
+	h.respondJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
 
 // BanUser ban/unban user

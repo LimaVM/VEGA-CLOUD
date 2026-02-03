@@ -1,9 +1,17 @@
 // ============================================
-// VEGA CLOUD v9.0.0 - Premium Frontend
+// VEGA CLOUD v9.1.5 - Premium Frontend
 // ============================================
 
 var API = '/api';
 var CONTAINER_REFRESH_INTERVAL = 3000; // 3 segundos
+
+function apiFetch(url, options = {}) {
+  const mergedOptions = { credentials: 'include', ...options };
+  if (options.headers) {
+    mergedOptions.headers = options.headers;
+  }
+  return window.fetch(url, mergedOptions);
+}
 
 // State
 // State
@@ -14,6 +22,7 @@ var terminal = null;
 var terminalSocket = null;
 var timerIntervals = {};
 var fitAddon = null;
+var terminalInitialized = false;
 var containerRefreshInterval = null;
 var firewallContainerId = null; // Filter for firewall view
 var pollInterval = null;
@@ -24,6 +33,24 @@ var memChart = null;
 var currentPath = "/";
 var editorPath = "";
 var editorContainerId = null;
+var adminUsersCache = [];
+var adminContainersCache = [];
+
+function updateSummaryCounts({ containerCount, firewallCount, planLabel } = {}) {
+  const summaryContainers = document.getElementById('summary-containers');
+  const summaryFirewall = document.getElementById('summary-firewall');
+  const summaryPlan = document.getElementById('summary-plan');
+
+  if (summaryContainers && containerCount !== undefined) {
+    summaryContainers.textContent = containerCount;
+  }
+  if (summaryFirewall && firewallCount !== undefined) {
+    summaryFirewall.textContent = firewallCount;
+  }
+  if (summaryPlan && planLabel) {
+    summaryPlan.textContent = planLabel;
+  }
+}
 
 // DOM Elements
 // DOM Elements
@@ -63,6 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupFirewall();
   setupModalTabs();
   setupMonitoring();
+  enforceAuthRoute();
   await checkAuth();
 });
 
@@ -72,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function checkAuth() {
   try {
-    const res = await fetch(`${API}/auth/me`, { credentials: 'include' });
+    const res = await apiFetch(`${API}/auth/me`);
     if (res.ok) {
       currentUser = await res.json();
 
@@ -83,11 +111,13 @@ async function checkAuth() {
       showDashboard();
       startStatusPoller(); // Start polling
     } else {
+      currentUser = null;
       showAuth();
     }
   } catch (err) {
     console.error('CheckAuth Error:', err);
     // showToast('Erro de conexão ao verificar login', 'error'); // Optional: show to user
+    currentUser = null;
     showAuth();
   }
 }
@@ -97,7 +127,7 @@ function startStatusPoller() {
   pollInterval = setInterval(async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`${API}/auth/me`);
+      const res = await apiFetch(`${API}/auth/me`);
       if (res.ok) {
         const updatedUser = await res.json();
 
@@ -137,11 +167,17 @@ function startStatusPoller() {
 function showAuth() {
   authPage.classList.add('active');
   dashboardPage.classList.remove('active');
+  if (location.pathname !== '/login') {
+    history.replaceState({}, '', '/login');
+  }
 }
 
 function showDashboard() {
   authPage.classList.remove('active');
   dashboardPage.classList.add('active');
+  if (location.pathname === '/login') {
+    history.replaceState({}, '', '/');
+  }
 
   // Update user display
   const usernameDisplay = document.getElementById('username-display');
@@ -154,6 +190,10 @@ function showDashboard() {
     userNameDisplay.textContent = currentUser.username;
   }
   updateUserRoleBadge();
+  updateSummaryCounts({
+    containerCount: currentUser.containers || 0,
+    planLabel: currentUser.is_premium ? 'Premium' : 'Free'
+  });
 
   loadContainers();
 
@@ -183,30 +223,13 @@ function showDashboard() {
       adminNav.style.display = 'flex';
     }
 
-    // Hide User Navs
-    if (userNavContainers) userNavContainers.style.display = 'none';
-    if (userNavFirewall) userNavFirewall.style.display = 'none';
+    // Keep User Navs available
+    if (userNavContainers) userNavContainers.style.display = 'flex';
+    if (userNavFirewall) userNavFirewall.style.display = 'flex';
 
-    // Hide Create Buttons
-    if (btnNewContainer) btnNewContainer.style.display = 'none';
-    if (btnCreateFirst) btnCreateFirst.style.display = 'none';
-
-    // Force Admin View
-    const adminView = document.getElementById('view-admin');
-    if (adminView) {
-      // Hide all other views
-      document.getElementById('view-containers').classList.add('hidden');
-      document.getElementById('view-firewall').classList.add('hidden');
-
-      // Show Admin View
-      adminView.classList.remove('hidden');
-      loadAdminView();
-
-      // Update Active Nav
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      if (adminNav) adminNav.classList.add('active');
-    }
-
+    // Allow Admin to create containers
+    if (btnNewContainer) btnNewContainer.style.display = 'inline-flex';
+    if (btnCreateFirst) btnCreateFirst.style.display = 'inline-flex';
   } else {
     // === STANDARD USER VIEW ===
     console.log('User is Standard. Enabling User Mode.');
@@ -229,6 +252,12 @@ function showDashboard() {
     if (!document.getElementById('view-admin').classList.contains('hidden')) {
       document.querySelector('[data-view="containers"]').click();
     }
+  }
+}
+
+function enforceAuthRoute() {
+  if (!currentUser && location.pathname !== '/login') {
+    history.replaceState({}, '', '/login');
   }
 }
 
@@ -270,7 +299,7 @@ function setupAuthForms() {
     btn.innerHTML = '<span class="spinner"></span><span>Entrando...</span>';
 
     try {
-      const res = await fetch(`${API}/auth/login`, {
+      const res = await apiFetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -302,7 +331,7 @@ function setupAuthForms() {
     btn.innerHTML = '<span class="spinner"></span><span>Criando...</span>';
 
     try {
-      const res = await fetch(`${API}/auth/register`, {
+      const res = await apiFetch(`${API}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -338,6 +367,7 @@ function setupDashboard() {
   document.getElementById('modal-btn-reset')?.addEventListener('click', () => resetTimer(selectedContainer?.id));
   document.getElementById('modal-btn-reset-big')?.addEventListener('click', () => resetTimer(selectedContainer?.id));
   document.getElementById('modal-btn-delete')?.addEventListener('click', () => deleteContainer(selectedContainer?.id));
+  setupAdminFilters();
 }
 
 function setupSidebar() {
@@ -376,7 +406,7 @@ function setupSidebar() {
 }
 
 async function logout() {
-  await fetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => { });
+  await apiFetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => { });
   currentUser = null;
   containers = [];
   Object.values(timerIntervals).forEach(clearInterval);
@@ -395,15 +425,20 @@ async function logout() {
 
 async function loadContainers() {
   try {
-    const res = await fetch(`${API}/vm/my`);
+    const res = await apiFetch(`${API}/vm/my`);
     const data = await res.json();
     containers = Array.isArray(data) ? data : [];
     renderContainers();
     updateStats();
+    updateSummaryCounts({
+      containerCount: containers.length,
+      planLabel: currentUser?.is_premium ? 'Premium' : 'Free'
+    });
   } catch (err) {
     console.error('Erro ao carregar containers:', err);
     containers = [];
     renderContainers();
+    updateSummaryCounts({ containerCount: 0 });
   }
 }
 
@@ -421,7 +456,7 @@ function renderContainers() {
 
   noContainers.classList.add('hidden');
 
-  const isPremium = currentUser && currentUser.is_premium;
+  const isPremium = currentUser && (currentUser.is_premium || currentUser.is_admin);
 
   containers.forEach(ct => {
     const card = document.createElement('div');
@@ -561,7 +596,7 @@ async function resetTimer(ctid) {
   if (!ctid) return;
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/reset`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${ctid}/reset`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao resetar timer');
 
@@ -586,7 +621,7 @@ async function deleteContainer(ctid) {
   if (!confirm('Tem certeza que deseja destruir este container? Esta ação não pode ser desfeita.')) return;
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json();
       throw new Error(data.error || 'Erro ao deletar container');
@@ -605,7 +640,7 @@ async function startContainer() {
   if (!selectedContainer) return;
   showToast('Iniciando container...', 'info');
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/start`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/start`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao iniciar');
 
     showToast('Container iniciado', 'success');
@@ -626,7 +661,7 @@ async function stopContainer() {
   if (!confirm('Deseja parar o container?')) return;
   showToast('Parando container...', 'info');
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/stop`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/stop`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao parar');
 
     showToast('Container parado', 'success');
@@ -646,7 +681,7 @@ async function restartContainer() {
   if (!confirm('Deseja reiniciar o container?')) return;
   showToast('Reiniciando...', 'info');
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/restart`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/restart`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao reiniciar');
     showToast('Container reiniciado', 'success');
 
@@ -670,12 +705,13 @@ function updatePowerButtons() {
   if (!selectedContainer) return;
 
   const isRunning = selectedContainer.state === 'running';
+  const isAdmin = currentUser && currentUser.is_admin;
 
   // Reset Timer logic: Show for Free users if running or stopped (to renew expiration)
   // But wait, if stopped, reset timer AUTO-STARTS it now.
   // Premium users don't need reset timer usually if infinite.
 
-  if (currentUser && currentUser.is_premium) {
+  if (currentUser && (currentUser.is_premium || isAdmin)) {
     btnReset.style.display = 'none';
     // Premium: Show power controls based on state
     if (isRunning) {
@@ -778,7 +814,7 @@ function renderTemplateOptions() {
 
 async function loadTemplates() {
   try {
-    const res = await fetch(`${API}/vm/templates`);
+    const res = await apiFetch(`${API}/vm/templates`);
     if (!res.ok) return;
     const data = await res.json();
     templateCatalog = Array.isArray(data) ? data : [];
@@ -842,7 +878,7 @@ async function showNewContainerModal() {
 
 async function updateResourceLimitsDisplay() {
   try {
-    const res = await fetch(`${API}/account/resources`);
+    const res = await apiFetch(`${API}/account/resources`);
     if (!res.ok) return;
     const data = await res.json();
 
@@ -887,7 +923,7 @@ async function handleCreateContainer(e) {
   const memory = parseInt(ramSlider.value);
 
   try {
-    const res = await fetch(`${API}/vm/create`, {
+    const res = await apiFetch(`${API}/vm/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -942,7 +978,7 @@ async function loadAllFirewallRules() {
   // Fetch rules for each container
   for (const ct of containers) {
     try {
-      const res = await fetch(`${API}/firewall?container_id=${ct.id}`);
+      const res = await apiFetch(`${API}/firewall?container_id=${ct.id}`);
       if (res.ok) {
         const rules = await res.json();
         // Add container name to rule for display
@@ -957,6 +993,7 @@ async function loadAllFirewallRules() {
   firewallLoading.classList.add('hidden');
   if (allRules.length === 0) {
     firewallEmpty.classList.remove('hidden');
+    updateSummaryCounts({ firewallCount: 0 });
   } else {
     renderFirewallRules(allRules);
   }
@@ -964,6 +1001,7 @@ async function loadAllFirewallRules() {
 
 function renderFirewallRules(rules) {
   firewallTableBody.innerHTML = '';
+  updateSummaryCounts({ firewallCount: rules.length });
   rules.forEach(rule => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1015,7 +1053,7 @@ async function handleCreateFirewallRule(e) {
   const port = parseInt(document.getElementById('fw-internal-port').value);
 
   try {
-    const res = await fetch(`${API}/firewall/create`, {
+    const res = await apiFetch(`${API}/firewall/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1043,7 +1081,7 @@ window.deleteFirewallRule = async function (id) {
   if (!confirm('Deseja realmente remover esta regra de firewall?')) return;
 
   try {
-    const res = await fetch(`${API}/firewall/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/firewall/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Erro ao deletar regra');
 
     showToast('Regra removida!', 'success');
@@ -1073,11 +1111,8 @@ function setupModalTabs() {
       if (target) target.classList.add('active');
 
       // Refresh terminal if visible
-      if (tab.dataset.tab === 'terminal' && terminal) {
-        setTimeout(() => {
-          if (fitAddon) fitAddon.fit();
-          terminal.focus();
-        }, 200);
+      if (tab.dataset.tab === 'terminal' && selectedContainer) {
+        ensureTerminalReady(selectedContainer.id);
       }
 
       if (tab.dataset.tab === 'snapshots') {
@@ -1096,6 +1131,7 @@ function setupModalTabs() {
 function openModal(ct) {
   selectedContainer = ct;
   currentPath = "/";
+  terminalInitialized = false;
   containerModal.classList.add('active');
   document.getElementById('modal-title').textContent = ct.name;
 
@@ -1112,7 +1148,9 @@ function openModal(ct) {
   document.getElementById('modal-password').textContent = ct.password || '••••••';
 
   // PREMIUM CHECKS
-  const isPremium = currentUser && currentUser.is_premium;
+  const isPremium = currentUser && (currentUser.is_premium || currentUser.is_admin);
+
+  updatePowerButtons();
 
   // Timer Logic
   const timerCard = document.querySelector('.info-card .timer-icon')?.parentNode;
@@ -1137,7 +1175,10 @@ function openModal(ct) {
   // Actually updateModalTimer handles the loop. We should kill it if premium.
   if (isPremium && modalTimerInterval) clearInterval(modalTimerInterval);
 
-  initTerminal(ct.id);
+  const terminalTab = document.querySelector('.modal-tab[data-tab="terminal"]');
+  if (terminalTab?.classList.contains('active')) {
+    ensureTerminalReady(ct.id);
+  }
   startModalPolling();
 }
 
@@ -1164,7 +1205,7 @@ async function loadSnapshots(ctid) {
   tbody.innerHTML = '';
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/snapshots`);
+    const res = await apiFetch(`${API}/vm/${ctid}/snapshots`);
     if (!res.ok) throw new Error('Erro ao carregar snapshots');
 
     const data = await res.json();
@@ -1202,7 +1243,7 @@ window.createSnapshot = async function () {
   if (!name) return;
 
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/snapshots`, {
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/snapshots`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name })
@@ -1224,7 +1265,7 @@ window.restoreSnapshot = async function (name) {
   if (!confirm(`Deseja restaurar o snapshot "${name}"?`)) return;
 
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}/restore`, {
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}/restore`, {
       method: 'POST'
     });
     if (!res.ok) {
@@ -1242,7 +1283,7 @@ window.deleteSnapshot = async function (name) {
   if (!confirm(`Deseja deletar o snapshot "${name}"?`)) return;
 
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}`, {
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}`, {
       method: 'DELETE'
     });
     if (!res.ok) {
@@ -1271,7 +1312,7 @@ async function loadMonitoring(ctid) {
   const timeframe = timeframeSelect.value || 'hour';
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/graphs?timeframe=${encodeURIComponent(timeframe)}`);
+    const res = await apiFetch(`${API}/vm/${ctid}/graphs?timeframe=${encodeURIComponent(timeframe)}`);
     if (!res.ok) throw new Error('Erro ao carregar métricas');
 
     const points = await res.json();
@@ -1381,10 +1422,24 @@ function closeModal() {
   if (terminal) terminal.dispose();
   terminal = null;
   terminalSocket = null;
+  fitAddon = null;
+  terminalInitialized = false;
   selectedContainer = null;
 
   if (modalTimerInterval) clearInterval(modalTimerInterval);
   if (modalPollInterval) clearInterval(modalPollInterval);
+}
+
+function ensureTerminalReady(vmId) {
+  if (!vmId) return;
+  if (!terminalInitialized) {
+    initTerminal(vmId);
+    terminalInitialized = true;
+  }
+  setTimeout(() => {
+    if (fitAddon) fitAddon.fit();
+    terminal?.focus();
+  }, 200);
 }
 
 let modalTimerInterval = null;
@@ -1414,10 +1469,16 @@ function startModalPolling() {
   modalPollInterval = setInterval(async () => {
     if (!selectedContainer) return;
     try {
-      const res = await fetch(`${API}/vm/${selectedContainer.id}`);
+      const res = await apiFetch(`${API}/vm/${selectedContainer.id}`);
       if (res.ok) {
         const data = await res.json();
         // Update helpers...
+        if (selectedContainer) {
+          selectedContainer.state = data.state || selectedContainer.state;
+          if (typeof data.time_remaining === 'number') {
+            selectedContainer.time_remaining = data.time_remaining;
+          }
+        }
         if (data.ip) document.getElementById('modal-ip').textContent = data.ip;
         document.getElementById('modal-password').textContent = data.password || '••••••';
         updateExternalSSH(data);
@@ -1445,7 +1506,7 @@ function initTerminal(vmId) {
     }
   });
 
-  const fitAddon = new FitAddon.FitAddon();
+  fitAddon = new FitAddon.FitAddon();
   terminal.loadAddon(fitAddon);
 
   terminal.open(document.getElementById('terminal-container'));
@@ -1510,6 +1571,29 @@ function connectTerminalWS(vmId) {
   terminalSocket.onopen = () => terminal?.writeln('\r\n\x1b[32mConectado via WebSocket!\x1b[0m\r\n');
 }
 
+window.terminalPaste = async function () {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
+      terminalSocket.send(text);
+    } else if (terminal) {
+      terminal.write(text);
+    }
+  } catch (e) {
+    showToast('Não foi possível acessar a área de transferência.', 'error');
+  }
+};
+
+window.terminalClear = function () {
+  terminal?.clear();
+};
+
+window.terminalReconnect = function () {
+  if (!selectedContainer?.id) return;
+  connectTerminalWS(selectedContainer.id);
+  showToast('Reconectando terminal...', 'info');
+};
+
 // ... CopyText, ShowToast ...
 function copyText(elementId) {
   const el = document.getElementById(elementId);
@@ -1559,7 +1643,7 @@ async function loadAdminView() {
 
 async function fetchAdminStats() {
   try {
-    const res = await fetch(`${API}/admin/stats`);
+    const res = await apiFetch(`${API}/admin/stats`);
     if (res.ok) {
       const stats = await res.json();
       const node = stats.node || stats;
@@ -1585,36 +1669,11 @@ async function fetchAdminStats() {
 
 async function fetchAdminUsers() {
   try {
-    const res = await fetch(`${API}/admin/users`);
+    const res = await apiFetch(`${API}/admin/users`);
     if (res.ok) {
-      const users = await res.json();
-      console.log('DEBUG: Admin Users received:', users);
-      const tbody = document.querySelector('#admin-users-table tbody');
-      tbody.innerHTML = '';
-      users.forEach(u => {
-        const tr = document.createElement('tr');
-        const registerIP = u.register_ip || '-';
-        const safeUsername = u.username.replace(/'/g, "\\'"); // Escape single quotes for onclick
-        tr.innerHTML = `
-          <td>${u.id}</td>
-          <td>${u.username} ${u.is_premium ? '<span class="badge premium">PREMIUM</span>' : ''} ${u.is_admin ? '<span class="badge admin">ADMIN</span>' : ''}</td>
-          <td>${u.container_count || 0}</td>
-          <td>${registerIP}</td>
-          <td>${u.last_login || '-'}</td>
-          <td style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button class="btn-sm" onclick="toggleUserPremium(${u.id}, ${!u.is_premium})" title="${u.is_premium ? 'Remover Premium' : 'Dar Premium'}">
-              <i class="fas fa-crown" style="color: ${u.is_premium ? 'var(--text-muted)' : 'gold'}"></i>
-            </button>
-            <button class="btn-sm" onclick="toggleUserBan(${u.id}, ${!u.is_banned}, '${safeUsername}')" title="${u.is_banned ? 'Desbanir' : 'Banir'}">
-              <i class="fas fa-gavel" style="color: ${u.is_banned ? 'var(--success)' : 'var(--error)'}"></i>
-            </button>
-            <button class="btn-sm" onclick="deleteUser(${u.id}, '${safeUsername}')" title="Deletar Usuário">
-              <i class="fas fa-trash" style="color: var(--error)"></i>
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+      adminUsersCache = await res.json();
+      console.log('DEBUG: Admin Users received:', adminUsersCache);
+      renderAdminUsers(getFilteredAdminUsers());
     }
   } catch (err) {
     showToast('Erro ao carregar usuários: ' + err.message, 'error');
@@ -1623,34 +1682,149 @@ async function fetchAdminUsers() {
 
 async function fetchAdminContainers() {
   try {
-    const res = await fetch(`${API}/admin/containers`);
+    const res = await apiFetch(`${API}/admin/containers`);
     if (res.ok) {
-      const list = await res.json();
-      const tbody = document.querySelector('#admin-containers-table tbody');
-      tbody.innerHTML = '';
-      list.forEach(c => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${c.id}</td>
-          <td>${c.name}</td>
-          <td>${c.owner}</td>
-          <td>${c.ip}</td>
-          <td><span class="badge badge-${c.state}">${c.state}</span></td>
-          <td>${Math.round(c.memory / 1024)}GB / ${c.cores}vCPU</td>
-          <td>
-            <button class="btn-sm" onclick="openAdminContainer(${c.id})"><i class="fas fa-terminal"></i></button>
-            <button class="btn-sm-danger" onclick="adminDeleteContainer(${c.id})"><i class="fas fa-trash"></i></button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+      adminContainersCache = await res.json();
+      renderAdminContainers(getFilteredAdminContainers());
     }
   } catch (e) { console.error(e); }
 }
 
+function setupAdminFilters() {
+  const userSearch = document.getElementById('admin-user-search');
+  const userFilter = document.getElementById('admin-user-filter');
+  const containerSearch = document.getElementById('admin-container-search');
+  const containerFilter = document.getElementById('admin-container-filter');
+
+  if (userSearch) {
+    userSearch.addEventListener('input', () => renderAdminUsers(getFilteredAdminUsers()));
+  }
+  if (userFilter) {
+    userFilter.addEventListener('change', () => renderAdminUsers(getFilteredAdminUsers()));
+  }
+  if (containerSearch) {
+    containerSearch.addEventListener('input', () => renderAdminContainers(getFilteredAdminContainers()));
+  }
+  if (containerFilter) {
+    containerFilter.addEventListener('change', () => renderAdminContainers(getFilteredAdminContainers()));
+  }
+}
+
+function getFilteredAdminUsers() {
+  const userSearch = document.getElementById('admin-user-search');
+  const userFilter = document.getElementById('admin-user-filter');
+  const query = userSearch?.value.trim().toLowerCase() || '';
+  const filter = userFilter?.value || 'all';
+
+  return adminUsersCache.filter(user => {
+    const matchesQuery = !query || [
+      user.username,
+      String(user.id),
+      user.register_ip || ''
+    ].some(field => field.toLowerCase().includes(query));
+
+    if (!matchesQuery) return false;
+
+    if (filter === 'premium') return user.is_premium;
+    if (filter === 'admin') return user.is_admin;
+    if (filter === 'banned') return user.is_banned;
+    return true;
+  });
+}
+
+function getFilteredAdminContainers() {
+  const containerSearch = document.getElementById('admin-container-search');
+  const containerFilter = document.getElementById('admin-container-filter');
+  const query = containerSearch?.value.trim().toLowerCase() || '';
+  const filter = containerFilter?.value || 'all';
+
+  return adminContainersCache.filter(container => {
+    const matchesQuery = !query || [
+      container.name,
+      container.owner,
+      String(container.id)
+    ].some(field => (field || '').toLowerCase().includes(query));
+
+    if (!matchesQuery) return false;
+    if (filter === 'all') return true;
+    return container.state === filter;
+  });
+}
+
+function renderAdminUsers(users) {
+  const tbody = document.querySelector('#admin-users-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  users.forEach(u => {
+    const tr = document.createElement('tr');
+    const registerIP = u.register_ip || '-';
+    const safeUsername = JSON.stringify(u.username);
+    const isSuperAdmin = u.username === 'vega-admin';
+    const isSelf = currentUser && currentUser.id === u.id;
+    const permissionsBadges = [
+      u.is_admin ? '<span class="badge badge-admin">ADMIN</span>' : '',
+      u.is_premium ? '<span class="badge badge-warning">PREMIUM</span>' : '',
+      u.is_banned ? '<span class="badge badge-danger">BANIDO</span>' : ''
+    ].filter(Boolean).join(' ');
+
+    tr.innerHTML = `
+      <td>${u.id}</td>
+      <td>${u.username}</td>
+      <td>${registerIP}</td>
+      <td>${u.container_count || 0}</td>
+      <td>${u.last_login || '-'}</td>
+      <td>${permissionsBadges || '-'}</td>
+      <td style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+        <button class="btn-sm" onclick="handleResetUserPassword(${u.id}, ${safeUsername})" title="Resetar senha">
+          <i class="fas fa-key"></i>
+        </button>
+        <button class="btn-sm" ${isSuperAdmin ? 'disabled' : ''} onclick="toggleUserAdmin(${u.id}, ${u.is_admin})" title="${u.is_admin ? 'Remover Admin' : 'Tornar Admin'}">
+          <i class="fas fa-shield-alt" style="color: ${u.is_admin ? 'var(--accent-primary)' : 'var(--text-muted)'}"></i>
+        </button>
+        <button class="btn-sm" onclick="toggleUserPremium(${u.id}, ${u.is_premium})" title="${u.is_premium ? 'Remover Premium' : 'Dar Premium'}">
+          <i class="fas fa-crown" style="color: ${u.is_premium ? 'var(--text-muted)' : 'gold'}"></i>
+        </button>
+        <button class="btn-sm" onclick="toggleUserBan(${u.id}, ${u.is_banned}, ${safeUsername})" title="${u.is_banned ? 'Desbanir' : 'Banir'}">
+          <i class="fas fa-gavel" style="color: ${u.is_banned ? 'var(--success)' : 'var(--error)'}"></i>
+        </button>
+        <button class="btn-sm" ${isSelf ? 'disabled' : ''} onclick="revokeUserSessions(${u.id}, ${safeUsername})" title="Revogar sessões">
+          <i class="fas fa-user-lock"></i>
+        </button>
+        <button class="btn-sm" ${isSuperAdmin ? 'disabled' : ''} onclick="deleteUser(${u.id}, ${safeUsername})" title="Deletar Usuário">
+          <i class="fas fa-trash" style="color: var(--error)"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderAdminContainers(list) {
+  const tbody = document.querySelector('#admin-containers-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  list.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.id}</td>
+      <td>${c.name}</td>
+      <td>${c.owner}</td>
+      <td>${c.ip}</td>
+      <td><span class="badge badge-${c.state}">${c.state}</span></td>
+      <td>${Math.round(c.memory / 1024)}GB / ${c.cores}vCPU</td>
+      <td>
+        <button class="btn-sm" onclick="openAdminContainer(${c.id})"><i class="fas fa-terminal"></i></button>
+        <button class="btn-sm-danger" onclick="adminDeleteContainer(${c.id})"><i class="fas fa-trash"></i></button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
 window.openAdminContainer = async function (ctid) {
   try {
-    const res = await fetch(`${API}/vm/${ctid}`);
+    const res = await apiFetch(`${API}/vm/${ctid}`);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Erro ao carregar container');
@@ -1665,7 +1839,7 @@ window.openAdminContainer = async function (ctid) {
 window.adminDeleteContainer = async function (ctid) {
   if (!confirm(`Deseja deletar o container ${ctid}?`)) return;
   try {
-    const res = await fetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Erro ao deletar container');
@@ -1686,7 +1860,7 @@ window.handleResetUserPassword = async function (userId, username) {
   }
 
   try {
-    const res = await fetch(`${API}/admin/reset-password`, {
+    const res = await apiFetch(`${API}/admin/reset-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, new_password: newPass })
@@ -1702,15 +1876,15 @@ window.handleResetUserPassword = async function (userId, username) {
   }
 };
 
-window.toggleUserPremium = async function (userId, currentStatus) {
-  const action = currentStatus ? 'remover' : 'adicionar';
+window.toggleUserPremium = async function (userId, isPremium) {
+  const action = isPremium ? 'remover' : 'adicionar';
   if (!confirm(`Deseja realmente ${action} o status Premium deste usuário?`)) return;
 
   try {
-    const res = await fetch(`${API}/admin/users/${userId}/premium`, {
+    const res = await apiFetch(`${API}/admin/users/${userId}/premium`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ premium: !currentStatus })
+      body: JSON.stringify({ premium: !isPremium })
     });
 
     if (res.ok) {
@@ -1719,6 +1893,47 @@ window.toggleUserPremium = async function (userId, currentStatus) {
     } else {
       const d = await res.json();
       showToast(d.error || 'Erro ao atualizar', 'error');
+    }
+  } catch (e) {
+    showToast('Erro de conexão', 'error');
+  }
+};
+
+window.toggleUserAdmin = async function (userId, isAdmin) {
+  const action = isAdmin ? 'remover' : 'conceder';
+  if (!confirm(`Deseja realmente ${action} privilégios de admin para este usuário?`)) return;
+
+  try {
+    const res = await apiFetch(`${API}/admin/users/${userId}/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin: !isAdmin })
+    });
+
+    if (res.ok) {
+      showToast('Permissão admin atualizada!', 'success');
+      loadAdminView();
+    } else {
+      const d = await res.json();
+      showToast(d.error || 'Erro ao atualizar admin', 'error');
+    }
+  } catch (e) {
+    showToast('Erro de conexão', 'error');
+  }
+};
+
+window.revokeUserSessions = async function (userId, username) {
+  if (!confirm(`Deseja revogar todas as sessões do usuário ${username}?`)) return;
+
+  try {
+    const res = await apiFetch(`${API}/admin/users/${userId}/sessions/revoke`, {
+      method: 'POST'
+    });
+    if (res.ok) {
+      showToast('Sessões revogadas com sucesso!', 'success');
+    } else {
+      const d = await res.json();
+      showToast(d.error || 'Erro ao revogar sessões', 'error');
     }
   } catch (e) {
     showToast('Erro de conexão', 'error');
@@ -1817,7 +2032,7 @@ window.toggleUserBan = async function (userId, isBanned, currentReason) {
   }
 
   try {
-    const res = await fetch(`${API}/admin/users/${userId}/ban`, {
+    const res = await apiFetch(`${API}/admin/users/${userId}/ban`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ban: ban, reason: reason })
@@ -1839,7 +2054,7 @@ window.deleteUser = async function (uid, username) {
   if (!confirm(`⚠️ PERIGO: Tem certeza que deseja DELETAR o usuário "${username}"?\n\nIsso apagará PERMANENTEMENTE:\n- A conta do usuário\n- TODAS as VMs e dados\n- Todas as regras de firewall\n\nEsta ação não pode ser desfeita!`)) return;
 
   try {
-    const res = await fetch(`${API}/admin/users/${uid}`, {
+    const res = await apiFetch(`${API}/admin/users/${uid}`, {
       method: 'DELETE'
     });
 
@@ -1881,7 +2096,7 @@ async function loadFiles(ctid, path) {
   }
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/files?path=${encodeURIComponent(currentPath)}`);
+    const res = await apiFetch(`${API}/vm/${ctid}/files?path=${encodeURIComponent(currentPath)}`);
     if (res.ok) {
       const data = await res.json();
       const files = Array.isArray(data) ? data : [];
@@ -1921,6 +2136,8 @@ async function loadFiles(ctid, path) {
         const tr = document.createElement('tr');
         const icon = f.is_dir ? 'fa-folder' : 'fa-file-alt';
         const color = f.is_dir ? 'var(--warning)' : 'var(--text-secondary)';
+        const entryPath = joinPath(currentPath, f.name);
+        const safeEntryPath = JSON.stringify(entryPath);
         let size = f.size + " B";
         if (f.size > 1024) size = (f.size / 1024).toFixed(1) + " KB";
         if (f.size > 1024 * 1024) size = (f.size / 1024 / 1024).toFixed(1) + " MB";
@@ -1928,7 +2145,7 @@ async function loadFiles(ctid, path) {
         tr.innerHTML = `
                     <td><i class="fas ${icon}" style="color:${color};"></i></td>
                     <td>
-                        <a href="#" onclick="${f.is_dir ? `loadFiles(${ctid}, '${joinPath(currentPath, f.name)}')` : `openEditor(${ctid}, '${joinPath(currentPath, f.name)}')`}; return false;">
+                        <a href="#" onclick="${f.is_dir ? `loadFiles(${ctid}, ${safeEntryPath})` : `openEditor(${ctid}, ${safeEntryPath})`}; return false;">
                             ${f.name}
                         </a>
                     </td>
@@ -1936,7 +2153,7 @@ async function loadFiles(ctid, path) {
                     <td style="font-family:'JetBrains Mono'; font-size:0.8rem;">${f.permissions}</td>
                     <td>${f.mod_time}</td>
                     <td style="text-align:right;">
-                       ${!f.is_dir ? `<button class="btn-sm" onclick="openEditor(${ctid}, '${joinPath(currentPath, f.name)}')" title="Editar"><i class="fas fa-edit"></i></button>` : ''}
+                       ${!f.is_dir ? `<button class="btn-sm" onclick="openEditor(${ctid}, ${safeEntryPath})" title="Editar"><i class="fas fa-edit"></i></button>` : ''}
                     </td>
                 `;
         tbody.appendChild(tr);
@@ -1965,7 +2182,8 @@ function updateBreadcrumbs(ctid) {
 
   parts.forEach((p, i) => {
     buildPath += "/" + p;
-    el.innerHTML += ` <span>/</span> <a href="#" onclick="loadFiles(${ctid}, '${buildPath}'); return false;">${p}</a>`;
+    const safeBuildPath = JSON.stringify(buildPath);
+    el.innerHTML += ` <span>/</span> <a href="#" onclick="loadFiles(${ctid}, ${safeBuildPath}); return false;">${p}</a>`;
   });
 }
 
@@ -1994,7 +2212,7 @@ window.openEditor = async function (ctid, path) {
   modal.classList.add('active');
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/files/content?path=${encodeURIComponent(path)}`);
+    const res = await apiFetch(`${API}/vm/${ctid}/files/content?path=${encodeURIComponent(path)}`);
     if (res.ok) {
       const data = await res.json();
       contentArea.value = data.content;
@@ -2010,7 +2228,7 @@ window.saveFile = async function () {
   const content = document.getElementById('editor-content').value;
 
   try {
-    const res = await fetch(`${API}/vm/${editorContainerId}/files/content`, {
+    const res = await apiFetch(`${API}/vm/${editorContainerId}/files/content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: editorPath, content: content })
