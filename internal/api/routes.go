@@ -78,9 +78,19 @@ func (r *Router) setupRoutes() {
 			r.handlers.AdminMiddleware(r.handlers.ToggleUserPremium)(w, req)
 			return
 		}
+		// /api/admin/users/{id}/admin
+		if strings.HasPrefix(path, "/api/admin/users/") && strings.HasSuffix(path, "/admin") && req.Method == "POST" {
+			r.handlers.AdminMiddleware(r.handlers.ToggleUserAdmin)(w, req)
+			return
+		}
 		// /api/admin/users/{id}/ban
 		if strings.HasPrefix(path, "/api/admin/users/") && strings.HasSuffix(path, "/ban") && req.Method == "POST" {
 			r.handlers.AdminMiddleware(r.handlers.BanUser)(w, req)
+			return
+		}
+		// /api/admin/users/{id}/sessions/revoke
+		if strings.HasPrefix(path, "/api/admin/users/") && strings.HasSuffix(path, "/sessions/revoke") && req.Method == "POST" {
+			r.handlers.AdminMiddleware(r.handlers.RevokeUserSessions)(w, req)
 			return
 		}
 		http.NotFound(w, req)

@@ -33,6 +33,8 @@ var memChart = null;
 var currentPath = "/";
 var editorPath = "";
 var editorContainerId = null;
+var adminUsersCache = [];
+var adminContainersCache = [];
 
 // DOM Elements
 // DOM Elements
@@ -347,6 +349,7 @@ function setupDashboard() {
   document.getElementById('modal-btn-reset')?.addEventListener('click', () => resetTimer(selectedContainer?.id));
   document.getElementById('modal-btn-reset-big')?.addEventListener('click', () => resetTimer(selectedContainer?.id));
   document.getElementById('modal-btn-delete')?.addEventListener('click', () => deleteContainer(selectedContainer?.id));
+  setupAdminFilters();
 }
 
 function setupSidebar() {
@@ -1643,34 +1646,9 @@ async function fetchAdminUsers() {
   try {
     const res = await apiFetch(`${API}/admin/users`);
     if (res.ok) {
-      const users = await res.json();
-      console.log('DEBUG: Admin Users received:', users);
-      const tbody = document.querySelector('#admin-users-table tbody');
-      tbody.innerHTML = '';
-      users.forEach(u => {
-        const tr = document.createElement('tr');
-        const registerIP = u.register_ip || '-';
-        const safeUsername = u.username.replace(/'/g, "\\'"); // Escape single quotes for onclick
-        tr.innerHTML = `
-          <td>${u.id}</td>
-          <td>${u.username} ${u.is_premium ? '<span class="badge premium">PREMIUM</span>' : ''} ${u.is_admin ? '<span class="badge admin">ADMIN</span>' : ''}</td>
-          <td>${u.container_count || 0}</td>
-          <td>${registerIP}</td>
-          <td>${u.last_login || '-'}</td>
-          <td style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button class="btn-sm" onclick="toggleUserPremium(${u.id}, ${!u.is_premium})" title="${u.is_premium ? 'Remover Premium' : 'Dar Premium'}">
-              <i class="fas fa-crown" style="color: ${u.is_premium ? 'var(--text-muted)' : 'gold'}"></i>
-            </button>
-            <button class="btn-sm" onclick="toggleUserBan(${u.id}, ${!u.is_banned}, '${safeUsername}')" title="${u.is_banned ? 'Desbanir' : 'Banir'}">
-              <i class="fas fa-gavel" style="color: ${u.is_banned ? 'var(--success)' : 'var(--error)'}"></i>
-            </button>
-            <button class="btn-sm" onclick="deleteUser(${u.id}, '${safeUsername}')" title="Deletar Usuário">
-              <i class="fas fa-trash" style="color: var(--error)"></i>
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+      adminUsersCache = await res.json();
+      console.log('DEBUG: Admin Users received:', adminUsersCache);
+      renderAdminUsers(getFilteredAdminUsers());
     }
   } catch (err) {
     showToast('Erro ao carregar usuários: ' + err.message, 'error');
@@ -1681,27 +1659,142 @@ async function fetchAdminContainers() {
   try {
     const res = await apiFetch(`${API}/admin/containers`);
     if (res.ok) {
-      const list = await res.json();
-      const tbody = document.querySelector('#admin-containers-table tbody');
-      tbody.innerHTML = '';
-      list.forEach(c => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${c.id}</td>
-          <td>${c.name}</td>
-          <td>${c.owner}</td>
-          <td>${c.ip}</td>
-          <td><span class="badge badge-${c.state}">${c.state}</span></td>
-          <td>${Math.round(c.memory / 1024)}GB / ${c.cores}vCPU</td>
-          <td>
-            <button class="btn-sm" onclick="openAdminContainer(${c.id})"><i class="fas fa-terminal"></i></button>
-            <button class="btn-sm-danger" onclick="adminDeleteContainer(${c.id})"><i class="fas fa-trash"></i></button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+      adminContainersCache = await res.json();
+      renderAdminContainers(getFilteredAdminContainers());
     }
   } catch (e) { console.error(e); }
+}
+
+function setupAdminFilters() {
+  const userSearch = document.getElementById('admin-user-search');
+  const userFilter = document.getElementById('admin-user-filter');
+  const containerSearch = document.getElementById('admin-container-search');
+  const containerFilter = document.getElementById('admin-container-filter');
+
+  if (userSearch) {
+    userSearch.addEventListener('input', () => renderAdminUsers(getFilteredAdminUsers()));
+  }
+  if (userFilter) {
+    userFilter.addEventListener('change', () => renderAdminUsers(getFilteredAdminUsers()));
+  }
+  if (containerSearch) {
+    containerSearch.addEventListener('input', () => renderAdminContainers(getFilteredAdminContainers()));
+  }
+  if (containerFilter) {
+    containerFilter.addEventListener('change', () => renderAdminContainers(getFilteredAdminContainers()));
+  }
+}
+
+function getFilteredAdminUsers() {
+  const userSearch = document.getElementById('admin-user-search');
+  const userFilter = document.getElementById('admin-user-filter');
+  const query = userSearch?.value.trim().toLowerCase() || '';
+  const filter = userFilter?.value || 'all';
+
+  return adminUsersCache.filter(user => {
+    const matchesQuery = !query || [
+      user.username,
+      String(user.id),
+      user.register_ip || ''
+    ].some(field => field.toLowerCase().includes(query));
+
+    if (!matchesQuery) return false;
+
+    if (filter === 'premium') return user.is_premium;
+    if (filter === 'admin') return user.is_admin;
+    if (filter === 'banned') return user.is_banned;
+    return true;
+  });
+}
+
+function getFilteredAdminContainers() {
+  const containerSearch = document.getElementById('admin-container-search');
+  const containerFilter = document.getElementById('admin-container-filter');
+  const query = containerSearch?.value.trim().toLowerCase() || '';
+  const filter = containerFilter?.value || 'all';
+
+  return adminContainersCache.filter(container => {
+    const matchesQuery = !query || [
+      container.name,
+      container.owner,
+      String(container.id)
+    ].some(field => (field || '').toLowerCase().includes(query));
+
+    if (!matchesQuery) return false;
+    if (filter === 'all') return true;
+    return container.state === filter;
+  });
+}
+
+function renderAdminUsers(users) {
+  const tbody = document.querySelector('#admin-users-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  users.forEach(u => {
+    const tr = document.createElement('tr');
+    const registerIP = u.register_ip || '-';
+    const safeUsername = JSON.stringify(u.username);
+    const isSuperAdmin = u.username === 'vega-admin';
+    const isSelf = currentUser && currentUser.id === u.id;
+    const permissionsBadges = [
+      u.is_admin ? '<span class="badge badge-admin">ADMIN</span>' : '',
+      u.is_premium ? '<span class="badge badge-warning">PREMIUM</span>' : '',
+      u.is_banned ? '<span class="badge badge-danger">BANIDO</span>' : ''
+    ].filter(Boolean).join(' ');
+
+    tr.innerHTML = `
+      <td>${u.id}</td>
+      <td>${u.username}</td>
+      <td>${registerIP}</td>
+      <td>${u.container_count || 0}</td>
+      <td>${u.last_login || '-'}</td>
+      <td>${permissionsBadges || '-'}</td>
+      <td style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+        <button class="btn-sm" onclick="handleResetUserPassword(${u.id}, ${safeUsername})" title="Resetar senha">
+          <i class="fas fa-key"></i>
+        </button>
+        <button class="btn-sm" ${isSuperAdmin ? 'disabled' : ''} onclick="toggleUserAdmin(${u.id}, ${u.is_admin})" title="${u.is_admin ? 'Remover Admin' : 'Tornar Admin'}">
+          <i class="fas fa-shield-alt" style="color: ${u.is_admin ? 'var(--accent-primary)' : 'var(--text-muted)'}"></i>
+        </button>
+        <button class="btn-sm" onclick="toggleUserPremium(${u.id}, ${u.is_premium})" title="${u.is_premium ? 'Remover Premium' : 'Dar Premium'}">
+          <i class="fas fa-crown" style="color: ${u.is_premium ? 'var(--text-muted)' : 'gold'}"></i>
+        </button>
+        <button class="btn-sm" onclick="toggleUserBan(${u.id}, ${u.is_banned}, ${safeUsername})" title="${u.is_banned ? 'Desbanir' : 'Banir'}">
+          <i class="fas fa-gavel" style="color: ${u.is_banned ? 'var(--success)' : 'var(--error)'}"></i>
+        </button>
+        <button class="btn-sm" ${isSelf ? 'disabled' : ''} onclick="revokeUserSessions(${u.id}, ${safeUsername})" title="Revogar sessões">
+          <i class="fas fa-user-lock"></i>
+        </button>
+        <button class="btn-sm" ${isSuperAdmin ? 'disabled' : ''} onclick="deleteUser(${u.id}, ${safeUsername})" title="Deletar Usuário">
+          <i class="fas fa-trash" style="color: var(--error)"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderAdminContainers(list) {
+  const tbody = document.querySelector('#admin-containers-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  list.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.id}</td>
+      <td>${c.name}</td>
+      <td>${c.owner}</td>
+      <td>${c.ip}</td>
+      <td><span class="badge badge-${c.state}">${c.state}</span></td>
+      <td>${Math.round(c.memory / 1024)}GB / ${c.cores}vCPU</td>
+      <td>
+        <button class="btn-sm" onclick="openAdminContainer(${c.id})"><i class="fas fa-terminal"></i></button>
+        <button class="btn-sm-danger" onclick="adminDeleteContainer(${c.id})"><i class="fas fa-trash"></i></button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 window.openAdminContainer = async function (ctid) {
@@ -1758,15 +1851,15 @@ window.handleResetUserPassword = async function (userId, username) {
   }
 };
 
-window.toggleUserPremium = async function (userId, currentStatus) {
-  const action = currentStatus ? 'remover' : 'adicionar';
+window.toggleUserPremium = async function (userId, isPremium) {
+  const action = isPremium ? 'remover' : 'adicionar';
   if (!confirm(`Deseja realmente ${action} o status Premium deste usuário?`)) return;
 
   try {
     const res = await apiFetch(`${API}/admin/users/${userId}/premium`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ premium: !currentStatus })
+      body: JSON.stringify({ premium: !isPremium })
     });
 
     if (res.ok) {
@@ -1775,6 +1868,47 @@ window.toggleUserPremium = async function (userId, currentStatus) {
     } else {
       const d = await res.json();
       showToast(d.error || 'Erro ao atualizar', 'error');
+    }
+  } catch (e) {
+    showToast('Erro de conexão', 'error');
+  }
+};
+
+window.toggleUserAdmin = async function (userId, isAdmin) {
+  const action = isAdmin ? 'remover' : 'conceder';
+  if (!confirm(`Deseja realmente ${action} privilégios de admin para este usuário?`)) return;
+
+  try {
+    const res = await apiFetch(`${API}/admin/users/${userId}/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin: !isAdmin })
+    });
+
+    if (res.ok) {
+      showToast('Permissão admin atualizada!', 'success');
+      loadAdminView();
+    } else {
+      const d = await res.json();
+      showToast(d.error || 'Erro ao atualizar admin', 'error');
+    }
+  } catch (e) {
+    showToast('Erro de conexão', 'error');
+  }
+};
+
+window.revokeUserSessions = async function (userId, username) {
+  if (!confirm(`Deseja revogar todas as sessões do usuário ${username}?`)) return;
+
+  try {
+    const res = await apiFetch(`${API}/admin/users/${userId}/sessions/revoke`, {
+      method: 'POST'
+    });
+    if (res.ok) {
+      showToast('Sessões revogadas com sucesso!', 'success');
+    } else {
+      const d = await res.json();
+      showToast(d.error || 'Erro ao revogar sessões', 'error');
     }
   } catch (e) {
     showToast('Erro de conexão', 'error');

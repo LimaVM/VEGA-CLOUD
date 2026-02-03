@@ -478,7 +478,24 @@
             <!-- Users List -->
             <div class="card premium-card">
               <div class="card-header">
-                <h3>Usuários</h3>
+                <div class="card-header-row">
+                  <h3>Usuários</h3>
+                  <div class="admin-toolbar">
+                    <div class="admin-search">
+                      <i class="fas fa-search"></i>
+                      <input id="admin-user-search" type="text" placeholder="Buscar por usuário, ID ou IP..." />
+                    </div>
+                    <select id="admin-user-filter" class="custom-select">
+                      <option value="all">Todos</option>
+                      <option value="premium">Premium</option>
+                      <option value="admin">Admin</option>
+                      <option value="banned">Banidos</option>
+                    </select>
+                    <button class="btn-primary btn-sm" onclick="fetchAdminUsers()">
+                      <i class="fas fa-sync"></i>
+                    </button>
+                  </div>
+                </div>
               </div>
               <div class="table-responsive">
                 <table class="table" id="admin-users-table">
@@ -486,10 +503,10 @@
                     <tr>
                       <th>ID</th>
                       <th>Username</th>
-                      <th>Tier</th>
                       <th>IP Registro</th>
                       <th>Containers</th>
                       <th>Último Login</th>
+                      <th>Permissões</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -501,7 +518,26 @@
             <!-- Global Containers List -->
             <div class="card premium-card">
               <div class="card-header">
-                <h3>Todos os Containers</h3>
+                <div class="card-header-row">
+                  <h3>Todos os Containers</h3>
+                  <div class="admin-toolbar">
+                    <div class="admin-search">
+                      <i class="fas fa-search"></i>
+                      <input id="admin-container-search" type="text" placeholder="Buscar por nome, CTID ou dono..." />
+                    </div>
+                    <select id="admin-container-filter" class="custom-select">
+                      <option value="all">Todos</option>
+                      <option value="running">Rodando</option>
+                      <option value="stopped">Parado</option>
+                      <option value="creating">Criando</option>
+                      <option value="provisioning">Configurando</option>
+                      <option value="error">Erro</option>
+                    </select>
+                    <button class="btn-primary btn-sm" onclick="fetchAdminContainers()">
+                      <i class="fas fa-sync"></i>
+                    </button>
+                  </div>
+                </div>
               </div>
               <div class="table-responsive">
                 <table class="table" id="admin-containers-table">
