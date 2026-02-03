@@ -5,6 +5,14 @@
 var API = '/api';
 var CONTAINER_REFRESH_INTERVAL = 3000; // 3 segundos
 
+function apiFetch(url, options = {}) {
+  const mergedOptions = { credentials: 'include', ...options };
+  if (options.headers) {
+    mergedOptions.headers = options.headers;
+  }
+  return window.fetch(url, mergedOptions);
+}
+
 // State
 // State
 var currentUser = null;
@@ -72,7 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function checkAuth() {
   try {
-    const res = await fetch(`${API}/auth/me`, { credentials: 'include' });
+    const res = await apiFetch(`${API}/auth/me`);
     if (res.ok) {
       currentUser = await res.json();
 
@@ -97,7 +105,7 @@ function startStatusPoller() {
   pollInterval = setInterval(async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`${API}/auth/me`);
+      const res = await apiFetch(`${API}/auth/me`);
       if (res.ok) {
         const updatedUser = await res.json();
 
@@ -270,7 +278,7 @@ function setupAuthForms() {
     btn.innerHTML = '<span class="spinner"></span><span>Entrando...</span>';
 
     try {
-      const res = await fetch(`${API}/auth/login`, {
+      const res = await apiFetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -302,7 +310,7 @@ function setupAuthForms() {
     btn.innerHTML = '<span class="spinner"></span><span>Criando...</span>';
 
     try {
-      const res = await fetch(`${API}/auth/register`, {
+      const res = await apiFetch(`${API}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -376,7 +384,7 @@ function setupSidebar() {
 }
 
 async function logout() {
-  await fetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => { });
+  await apiFetch(`${API}/auth/logout`, { method: 'POST' }).catch(() => { });
   currentUser = null;
   containers = [];
   Object.values(timerIntervals).forEach(clearInterval);
@@ -395,7 +403,7 @@ async function logout() {
 
 async function loadContainers() {
   try {
-    const res = await fetch(`${API}/vm/my`);
+    const res = await apiFetch(`${API}/vm/my`);
     const data = await res.json();
     containers = Array.isArray(data) ? data : [];
     renderContainers();
@@ -561,7 +569,7 @@ async function resetTimer(ctid) {
   if (!ctid) return;
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/reset`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${ctid}/reset`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao resetar timer');
 
@@ -586,7 +594,7 @@ async function deleteContainer(ctid) {
   if (!confirm('Tem certeza que deseja destruir este container? Esta ação não pode ser desfeita.')) return;
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json();
       throw new Error(data.error || 'Erro ao deletar container');
@@ -605,7 +613,7 @@ async function startContainer() {
   if (!selectedContainer) return;
   showToast('Iniciando container...', 'info');
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/start`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/start`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao iniciar');
 
     showToast('Container iniciado', 'success');
@@ -626,7 +634,7 @@ async function stopContainer() {
   if (!confirm('Deseja parar o container?')) return;
   showToast('Parando container...', 'info');
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/stop`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/stop`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao parar');
 
     showToast('Container parado', 'success');
@@ -646,7 +654,7 @@ async function restartContainer() {
   if (!confirm('Deseja reiniciar o container?')) return;
   showToast('Reiniciando...', 'info');
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/restart`, { method: 'POST' });
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/restart`, { method: 'POST' });
     if (!res.ok) throw new Error('Erro ao reiniciar');
     showToast('Container reiniciado', 'success');
 
@@ -778,7 +786,7 @@ function renderTemplateOptions() {
 
 async function loadTemplates() {
   try {
-    const res = await fetch(`${API}/vm/templates`);
+    const res = await apiFetch(`${API}/vm/templates`);
     if (!res.ok) return;
     const data = await res.json();
     templateCatalog = Array.isArray(data) ? data : [];
@@ -842,7 +850,7 @@ async function showNewContainerModal() {
 
 async function updateResourceLimitsDisplay() {
   try {
-    const res = await fetch(`${API}/account/resources`);
+    const res = await apiFetch(`${API}/account/resources`);
     if (!res.ok) return;
     const data = await res.json();
 
@@ -887,7 +895,7 @@ async function handleCreateContainer(e) {
   const memory = parseInt(ramSlider.value);
 
   try {
-    const res = await fetch(`${API}/vm/create`, {
+    const res = await apiFetch(`${API}/vm/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -942,7 +950,7 @@ async function loadAllFirewallRules() {
   // Fetch rules for each container
   for (const ct of containers) {
     try {
-      const res = await fetch(`${API}/firewall?container_id=${ct.id}`);
+      const res = await apiFetch(`${API}/firewall?container_id=${ct.id}`);
       if (res.ok) {
         const rules = await res.json();
         // Add container name to rule for display
@@ -1015,7 +1023,7 @@ async function handleCreateFirewallRule(e) {
   const port = parseInt(document.getElementById('fw-internal-port').value);
 
   try {
-    const res = await fetch(`${API}/firewall/create`, {
+    const res = await apiFetch(`${API}/firewall/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1043,7 +1051,7 @@ window.deleteFirewallRule = async function (id) {
   if (!confirm('Deseja realmente remover esta regra de firewall?')) return;
 
   try {
-    const res = await fetch(`${API}/firewall/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/firewall/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Erro ao deletar regra');
 
     showToast('Regra removida!', 'success');
@@ -1114,6 +1122,8 @@ function openModal(ct) {
   // PREMIUM CHECKS
   const isPremium = currentUser && currentUser.is_premium;
 
+  updatePowerButtons();
+
   // Timer Logic
   const timerCard = document.querySelector('.info-card .timer-icon')?.parentNode;
   const resetBtnSmall = document.getElementById('modal-btn-reset');
@@ -1164,7 +1174,7 @@ async function loadSnapshots(ctid) {
   tbody.innerHTML = '';
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/snapshots`);
+    const res = await apiFetch(`${API}/vm/${ctid}/snapshots`);
     if (!res.ok) throw new Error('Erro ao carregar snapshots');
 
     const data = await res.json();
@@ -1202,7 +1212,7 @@ window.createSnapshot = async function () {
   if (!name) return;
 
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/snapshots`, {
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/snapshots`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name })
@@ -1224,7 +1234,7 @@ window.restoreSnapshot = async function (name) {
   if (!confirm(`Deseja restaurar o snapshot "${name}"?`)) return;
 
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}/restore`, {
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}/restore`, {
       method: 'POST'
     });
     if (!res.ok) {
@@ -1242,7 +1252,7 @@ window.deleteSnapshot = async function (name) {
   if (!confirm(`Deseja deletar o snapshot "${name}"?`)) return;
 
   try {
-    const res = await fetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}`, {
+    const res = await apiFetch(`${API}/vm/${selectedContainer.id}/snapshots/${encodeURIComponent(name)}`, {
       method: 'DELETE'
     });
     if (!res.ok) {
@@ -1271,7 +1281,7 @@ async function loadMonitoring(ctid) {
   const timeframe = timeframeSelect.value || 'hour';
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/graphs?timeframe=${encodeURIComponent(timeframe)}`);
+    const res = await apiFetch(`${API}/vm/${ctid}/graphs?timeframe=${encodeURIComponent(timeframe)}`);
     if (!res.ok) throw new Error('Erro ao carregar métricas');
 
     const points = await res.json();
@@ -1381,6 +1391,7 @@ function closeModal() {
   if (terminal) terminal.dispose();
   terminal = null;
   terminalSocket = null;
+  fitAddon = null;
   selectedContainer = null;
 
   if (modalTimerInterval) clearInterval(modalTimerInterval);
@@ -1414,7 +1425,7 @@ function startModalPolling() {
   modalPollInterval = setInterval(async () => {
     if (!selectedContainer) return;
     try {
-      const res = await fetch(`${API}/vm/${selectedContainer.id}`);
+      const res = await apiFetch(`${API}/vm/${selectedContainer.id}`);
       if (res.ok) {
         const data = await res.json();
         // Update helpers...
@@ -1445,7 +1456,7 @@ function initTerminal(vmId) {
     }
   });
 
-  const fitAddon = new FitAddon.FitAddon();
+  fitAddon = new FitAddon.FitAddon();
   terminal.loadAddon(fitAddon);
 
   terminal.open(document.getElementById('terminal-container'));
@@ -1559,7 +1570,7 @@ async function loadAdminView() {
 
 async function fetchAdminStats() {
   try {
-    const res = await fetch(`${API}/admin/stats`);
+    const res = await apiFetch(`${API}/admin/stats`);
     if (res.ok) {
       const stats = await res.json();
       const node = stats.node || stats;
@@ -1585,7 +1596,7 @@ async function fetchAdminStats() {
 
 async function fetchAdminUsers() {
   try {
-    const res = await fetch(`${API}/admin/users`);
+    const res = await apiFetch(`${API}/admin/users`);
     if (res.ok) {
       const users = await res.json();
       console.log('DEBUG: Admin Users received:', users);
@@ -1623,7 +1634,7 @@ async function fetchAdminUsers() {
 
 async function fetchAdminContainers() {
   try {
-    const res = await fetch(`${API}/admin/containers`);
+    const res = await apiFetch(`${API}/admin/containers`);
     if (res.ok) {
       const list = await res.json();
       const tbody = document.querySelector('#admin-containers-table tbody');
@@ -1650,7 +1661,7 @@ async function fetchAdminContainers() {
 
 window.openAdminContainer = async function (ctid) {
   try {
-    const res = await fetch(`${API}/vm/${ctid}`);
+    const res = await apiFetch(`${API}/vm/${ctid}`);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Erro ao carregar container');
@@ -1665,7 +1676,7 @@ window.openAdminContainer = async function (ctid) {
 window.adminDeleteContainer = async function (ctid) {
   if (!confirm(`Deseja deletar o container ${ctid}?`)) return;
   try {
-    const res = await fetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/vm/${ctid}`, { method: 'DELETE' });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Erro ao deletar container');
@@ -1686,7 +1697,7 @@ window.handleResetUserPassword = async function (userId, username) {
   }
 
   try {
-    const res = await fetch(`${API}/admin/reset-password`, {
+    const res = await apiFetch(`${API}/admin/reset-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, new_password: newPass })
@@ -1707,7 +1718,7 @@ window.toggleUserPremium = async function (userId, currentStatus) {
   if (!confirm(`Deseja realmente ${action} o status Premium deste usuário?`)) return;
 
   try {
-    const res = await fetch(`${API}/admin/users/${userId}/premium`, {
+    const res = await apiFetch(`${API}/admin/users/${userId}/premium`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ premium: !currentStatus })
@@ -1817,7 +1828,7 @@ window.toggleUserBan = async function (userId, isBanned, currentReason) {
   }
 
   try {
-    const res = await fetch(`${API}/admin/users/${userId}/ban`, {
+    const res = await apiFetch(`${API}/admin/users/${userId}/ban`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ban: ban, reason: reason })
@@ -1839,7 +1850,7 @@ window.deleteUser = async function (uid, username) {
   if (!confirm(`⚠️ PERIGO: Tem certeza que deseja DELETAR o usuário "${username}"?\n\nIsso apagará PERMANENTEMENTE:\n- A conta do usuário\n- TODAS as VMs e dados\n- Todas as regras de firewall\n\nEsta ação não pode ser desfeita!`)) return;
 
   try {
-    const res = await fetch(`${API}/admin/users/${uid}`, {
+    const res = await apiFetch(`${API}/admin/users/${uid}`, {
       method: 'DELETE'
     });
 
@@ -1881,7 +1892,7 @@ async function loadFiles(ctid, path) {
   }
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/files?path=${encodeURIComponent(currentPath)}`);
+    const res = await apiFetch(`${API}/vm/${ctid}/files?path=${encodeURIComponent(currentPath)}`);
     if (res.ok) {
       const data = await res.json();
       const files = Array.isArray(data) ? data : [];
@@ -1994,7 +2005,7 @@ window.openEditor = async function (ctid, path) {
   modal.classList.add('active');
 
   try {
-    const res = await fetch(`${API}/vm/${ctid}/files/content?path=${encodeURIComponent(path)}`);
+    const res = await apiFetch(`${API}/vm/${ctid}/files/content?path=${encodeURIComponent(path)}`);
     if (res.ok) {
       const data = await res.json();
       contentArea.value = data.content;
@@ -2010,7 +2021,7 @@ window.saveFile = async function () {
   const content = document.getElementById('editor-content').value;
 
   try {
-    const res = await fetch(`${API}/vm/${editorContainerId}/files/content`, {
+    const res = await apiFetch(`${API}/vm/${editorContainerId}/files/content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: editorPath, content: content })
