@@ -433,7 +433,7 @@ function renderContainers() {
 
   noContainers.classList.add('hidden');
 
-  const isPremium = currentUser && currentUser.is_premium;
+  const isPremium = currentUser && (currentUser.is_premium || currentUser.is_admin);
 
   containers.forEach(ct => {
     const card = document.createElement('div');
@@ -682,12 +682,13 @@ function updatePowerButtons() {
   if (!selectedContainer) return;
 
   const isRunning = selectedContainer.state === 'running';
+  const isAdmin = currentUser && currentUser.is_admin;
 
   // Reset Timer logic: Show for Free users if running or stopped (to renew expiration)
   // But wait, if stopped, reset timer AUTO-STARTS it now.
   // Premium users don't need reset timer usually if infinite.
 
-  if (currentUser && currentUser.is_premium) {
+  if (currentUser && (currentUser.is_premium || isAdmin)) {
     btnReset.style.display = 'none';
     // Premium: Show power controls based on state
     if (isRunning) {
@@ -1074,7 +1075,6 @@ function setupModalTabs() {
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       console.log('Tab clicked:', tab.dataset.tab); // DEBUG
-      if (!selectedContainer) return;
       // Remove active from all tabs
       document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
@@ -1086,7 +1086,7 @@ function setupModalTabs() {
       if (target) target.classList.add('active');
 
       // Refresh terminal if visible
-      if (tab.dataset.tab === 'terminal') {
+      if (tab.dataset.tab === 'terminal' && selectedContainer) {
         ensureTerminalReady(selectedContainer.id);
       }
 
@@ -1123,7 +1123,7 @@ function openModal(ct) {
   document.getElementById('modal-password').textContent = ct.password || '••••••';
 
   // PREMIUM CHECKS
-  const isPremium = currentUser && currentUser.is_premium;
+  const isPremium = currentUser && (currentUser.is_premium || currentUser.is_admin);
 
   updatePowerButtons();
 
