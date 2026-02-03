@@ -1,5 +1,5 @@
 // ============================================
-// VEGA CLOUD v9.0.0 - Premium Frontend
+// VEGA CLOUD v9.1.1 - Premium Frontend
 // ============================================
 
 var API = '/api';

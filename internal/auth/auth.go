@@ -20,7 +20,7 @@ var (
 )
 
 const (
-	SessionCookieName = "vega_session_v9"
+	SessionCookieName = "vega_session_v9_1_1"
 	SessionDuration   = 24 * time.Hour
 )
 
@@ -119,10 +119,7 @@ func GetSessionFromRequest(r *http.Request) string {
 
 // SetSessionCookie define o cookie de sessão
 func SetSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string) {
-	secure := r.TLS != nil
-	if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto == "https" {
-		secure = true
-	}
+	secure := true
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    sessionID,
@@ -137,10 +134,7 @@ func SetSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string) 
 
 // ClearSessionCookie remove o cookie de sessão
 func ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	secure := r.TLS != nil
-	if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto == "https" {
-		secure = true
-	}
+	secure := true
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",
