@@ -131,7 +131,7 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID)
+	auth.SetSessionCookie(w, r, sessionID)
 	log.Printf("✅ Novo usuário registrado: %s (IP: %s)", req.Username, clientIP)
 
 	h.respondJSON(w, http.StatusCreated, UserResponse{
@@ -161,7 +161,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID)
+	auth.SetSessionCookie(w, r, sessionID)
 	log.Printf("✅ Login: %s", req.Username)
 
 	h.respondJSON(w, http.StatusOK, UserResponse{
@@ -178,7 +178,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	if sessionID != "" {
 		auth.Logout(sessionID)
 	}
-	auth.ClearSessionCookie(w)
+	auth.ClearSessionCookie(w, r)
 	h.respondJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
