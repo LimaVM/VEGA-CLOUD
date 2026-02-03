@@ -1,0 +1,62 @@
+# Vega Cloud v2.3 Configuration
+
+server:
+  port: 80
+  host: "0.0.0.0"
+  # HTTPS Certificates (deixe em branco para HTTP)
+  cert_file: "C:\\Certbot\\live\\cloud.vegaconsultoria.com\\fullchain.pem"
+  key_file: "C:\\Certbot\\live\\cloud.vegaconsultoria.com\\privkey.pem"
+
+proxmox:
+  url: "https://192.168.177.213:8006"
+  node: "devlima"
+  token_id: "root@pam!vega"
+  token_secret: "9da15970-6e50-4d3f-9012-26f6a98be206"
+  insecure: true
+  # SSH para executar pct exec e configurar containers
+  ssh_host: "192.168.177.213"
+  ssh_user: "root"
+  ssh_password: "Juk!ra12"
+
+templates:
+  ubuntu:
+    ostemplate: "local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+    name: "Ubuntu 24.04 LTS"
+    description: "Standard Edition"
+  debian:
+    ostemplate: "local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst"
+    name: "Debian 12"
+    description: "Standard (Bookworm)"
+
+auth:
+  session_hours: 24
+  inactive_days: 3
+
+limits:
+  max_accounts_per_ip: 2
+  max_containers_per_user: 3
+  # Limites POR CONTA (total acumulativo)
+  max_cores_per_account: 8
+  max_memory_per_account: 8192  # 8GB em MB
+  # Limites POR CONTAINER (máximo individual)
+  max_cores_per_container: 8
+  max_memory_per_container: 8192
+  # Mínimos por container
+  min_cores_per_container: 1
+  min_memory_per_container: 1024  # 1GB mínimo
+
+reaper:
+  ttl_seconds: 7200
+  check_interval: 30
+
+database:
+  path: "vega-cloud.db"
+
+mikrotik:
+  enabled: true
+  host: "192.168.177.1"      # IP do MikroTik
+  user: "api-user"           # Usuário da API
+  password: "1234"           # Senha (preencha)
+  public_ip: "177.234.169.136"   # Domínio público para acesso SSH
+  port_range_start: 10000
+  port_range_end: 60000
