@@ -22,6 +22,7 @@ var terminal = null;
 var terminalSocket = null;
 var timerIntervals = {};
 var fitAddon = null;
+var terminalInitialized = false;
 var containerRefreshInterval = null;
 var firewallContainerId = null; // Filter for firewall view
 var pollInterval = null;
@@ -1070,6 +1071,7 @@ function setupModalTabs() {
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       console.log('Tab clicked:', tab.dataset.tab); // DEBUG
+      if (!selectedContainer) return;
       // Remove active from all tabs
       document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
@@ -1081,11 +1083,8 @@ function setupModalTabs() {
       if (target) target.classList.add('active');
 
       // Refresh terminal if visible
-      if (tab.dataset.tab === 'terminal' && terminal) {
-        setTimeout(() => {
-          if (fitAddon) fitAddon.fit();
-          terminal.focus();
-        }, 200);
+      if (tab.dataset.tab === 'terminal') {
+        ensureTerminalReady(selectedContainer.id);
       }
 
       if (tab.dataset.tab === 'snapshots') {
@@ -1104,6 +1103,7 @@ function setupModalTabs() {
 function openModal(ct) {
   selectedContainer = ct;
   currentPath = "/";
+  terminalInitialized = false;
   containerModal.classList.add('active');
   document.getElementById('modal-title').textContent = ct.name;
 
@@ -1147,7 +1147,10 @@ function openModal(ct) {
   // Actually updateModalTimer handles the loop. We should kill it if premium.
   if (isPremium && modalTimerInterval) clearInterval(modalTimerInterval);
 
-  initTerminal(ct.id);
+  const terminalTab = document.querySelector('.modal-tab[data-tab="terminal"]');
+  if (terminalTab?.classList.contains('active')) {
+    ensureTerminalReady(ct.id);
+  }
   startModalPolling();
 }
 
@@ -1392,10 +1395,23 @@ function closeModal() {
   terminal = null;
   terminalSocket = null;
   fitAddon = null;
+  terminalInitialized = false;
   selectedContainer = null;
 
   if (modalTimerInterval) clearInterval(modalTimerInterval);
   if (modalPollInterval) clearInterval(modalPollInterval);
+}
+
+function ensureTerminalReady(vmId) {
+  if (!vmId) return;
+  if (!terminalInitialized) {
+    initTerminal(vmId);
+    terminalInitialized = true;
+  }
+  setTimeout(() => {
+    if (fitAddon) fitAddon.fit();
+    terminal?.focus();
+  }, 200);
 }
 
 let modalTimerInterval = null;
@@ -1429,6 +1445,12 @@ function startModalPolling() {
       if (res.ok) {
         const data = await res.json();
         // Update helpers...
+        if (selectedContainer) {
+          selectedContainer.state = data.state || selectedContainer.state;
+          if (typeof data.time_remaining === 'number') {
+            selectedContainer.time_remaining = data.time_remaining;
+          }
+        }
         if (data.ip) document.getElementById('modal-ip').textContent = data.ip;
         document.getElementById('modal-password').textContent = data.password || '••••••';
         updateExternalSSH(data);
@@ -1520,6 +1542,29 @@ function connectTerminalWS(vmId) {
   };
   terminalSocket.onopen = () => terminal?.writeln('\r\n\x1b[32mConectado via WebSocket!\x1b[0m\r\n');
 }
+
+window.terminalPaste = async function () {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (terminalSocket && terminalSocket.readyState === WebSocket.OPEN) {
+      terminalSocket.send(text);
+    } else if (terminal) {
+      terminal.write(text);
+    }
+  } catch (e) {
+    showToast('Não foi possível acessar a área de transferência.', 'error');
+  }
+};
+
+window.terminalClear = function () {
+  terminal?.clear();
+};
+
+window.terminalReconnect = function () {
+  if (!selectedContainer?.id) return;
+  connectTerminalWS(selectedContainer.id);
+  showToast('Reconectando terminal...', 'info');
+};
 
 // ... CopyText, ShowToast ...
 function copyText(elementId) {
@@ -1932,6 +1977,8 @@ async function loadFiles(ctid, path) {
         const tr = document.createElement('tr');
         const icon = f.is_dir ? 'fa-folder' : 'fa-file-alt';
         const color = f.is_dir ? 'var(--warning)' : 'var(--text-secondary)';
+        const entryPath = joinPath(currentPath, f.name);
+        const safeEntryPath = JSON.stringify(entryPath);
         let size = f.size + " B";
         if (f.size > 1024) size = (f.size / 1024).toFixed(1) + " KB";
         if (f.size > 1024 * 1024) size = (f.size / 1024 / 1024).toFixed(1) + " MB";
@@ -1939,7 +1986,7 @@ async function loadFiles(ctid, path) {
         tr.innerHTML = `
                     <td><i class="fas ${icon}" style="color:${color};"></i></td>
                     <td>
-                        <a href="#" onclick="${f.is_dir ? `loadFiles(${ctid}, '${joinPath(currentPath, f.name)}')` : `openEditor(${ctid}, '${joinPath(currentPath, f.name)}')`}; return false;">
+                        <a href="#" onclick="${f.is_dir ? `loadFiles(${ctid}, ${safeEntryPath})` : `openEditor(${ctid}, ${safeEntryPath})`}; return false;">
                             ${f.name}
                         </a>
                     </td>
@@ -1947,7 +1994,7 @@ async function loadFiles(ctid, path) {
                     <td style="font-family:'JetBrains Mono'; font-size:0.8rem;">${f.permissions}</td>
                     <td>${f.mod_time}</td>
                     <td style="text-align:right;">
-                       ${!f.is_dir ? `<button class="btn-sm" onclick="openEditor(${ctid}, '${joinPath(currentPath, f.name)}')" title="Editar"><i class="fas fa-edit"></i></button>` : ''}
+                       ${!f.is_dir ? `<button class="btn-sm" onclick="openEditor(${ctid}, ${safeEntryPath})" title="Editar"><i class="fas fa-edit"></i></button>` : ''}
                     </td>
                 `;
         tbody.appendChild(tr);
@@ -1976,7 +2023,8 @@ function updateBreadcrumbs(ctid) {
 
   parts.forEach((p, i) => {
     buildPath += "/" + p;
-    el.innerHTML += ` <span>/</span> <a href="#" onclick="loadFiles(${ctid}, '${buildPath}'); return false;">${p}</a>`;
+    const safeBuildPath = JSON.stringify(buildPath);
+    el.innerHTML += ` <span>/</span> <a href="#" onclick="loadFiles(${ctid}, ${safeBuildPath}); return false;">${p}</a>`;
   });
 }
 
