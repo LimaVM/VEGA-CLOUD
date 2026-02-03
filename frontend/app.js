@@ -194,30 +194,13 @@ function showDashboard() {
       adminNav.style.display = 'flex';
     }
 
-    // Hide User Navs
-    if (userNavContainers) userNavContainers.style.display = 'none';
-    if (userNavFirewall) userNavFirewall.style.display = 'none';
+    // Keep User Navs available
+    if (userNavContainers) userNavContainers.style.display = 'flex';
+    if (userNavFirewall) userNavFirewall.style.display = 'flex';
 
-    // Hide Create Buttons
-    if (btnNewContainer) btnNewContainer.style.display = 'none';
-    if (btnCreateFirst) btnCreateFirst.style.display = 'none';
-
-    // Force Admin View
-    const adminView = document.getElementById('view-admin');
-    if (adminView) {
-      // Hide all other views
-      document.getElementById('view-containers').classList.add('hidden');
-      document.getElementById('view-firewall').classList.add('hidden');
-
-      // Show Admin View
-      adminView.classList.remove('hidden');
-      loadAdminView();
-
-      // Update Active Nav
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      if (adminNav) adminNav.classList.add('active');
-    }
-
+    // Allow Admin to create containers
+    if (btnNewContainer) btnNewContainer.style.display = 'inline-flex';
+    if (btnCreateFirst) btnCreateFirst.style.display = 'inline-flex';
   } else {
     // === STANDARD USER VIEW ===
     console.log('User is Standard. Enabling User Mode.');
