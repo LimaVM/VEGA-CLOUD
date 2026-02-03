@@ -24,7 +24,7 @@ func main() {
  ╦  ╦┌─┐┌─┐┌─┐  ╔═╗┬  ┌─┐┬ ┬┌┬┐
  ╚╗╔╝├┤ │ ┬├─┤  ║  │  │ ││ │ ││
  ╚╝ └─┘└─┘┴ ┴  ╚═╝┴─┘└─┘└─┘─┴┘
-  LXC Container Platform v9.1.4
+  LXC Container Platform v9.1.5
 	`)
 
 	// Carrega configuração

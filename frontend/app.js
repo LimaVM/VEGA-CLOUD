@@ -1,5 +1,5 @@
 // ============================================
-// VEGA CLOUD v9.1.4 - Premium Frontend
+// VEGA CLOUD v9.1.5 - Premium Frontend
 // ============================================
 
 var API = '/api';
@@ -35,6 +35,22 @@ var editorPath = "";
 var editorContainerId = null;
 var adminUsersCache = [];
 var adminContainersCache = [];
+
+function updateSummaryCounts({ containerCount, firewallCount, planLabel } = {}) {
+  const summaryContainers = document.getElementById('summary-containers');
+  const summaryFirewall = document.getElementById('summary-firewall');
+  const summaryPlan = document.getElementById('summary-plan');
+
+  if (summaryContainers && containerCount !== undefined) {
+    summaryContainers.textContent = containerCount;
+  }
+  if (summaryFirewall && firewallCount !== undefined) {
+    summaryFirewall.textContent = firewallCount;
+  }
+  if (summaryPlan && planLabel) {
+    summaryPlan.textContent = planLabel;
+  }
+}
 
 // DOM Elements
 // DOM Elements
@@ -174,6 +190,10 @@ function showDashboard() {
     userNameDisplay.textContent = currentUser.username;
   }
   updateUserRoleBadge();
+  updateSummaryCounts({
+    containerCount: currentUser.containers || 0,
+    planLabel: currentUser.is_premium ? 'Premium' : 'Free'
+  });
 
   loadContainers();
 
@@ -410,10 +430,15 @@ async function loadContainers() {
     containers = Array.isArray(data) ? data : [];
     renderContainers();
     updateStats();
+    updateSummaryCounts({
+      containerCount: containers.length,
+      planLabel: currentUser?.is_premium ? 'Premium' : 'Free'
+    });
   } catch (err) {
     console.error('Erro ao carregar containers:', err);
     containers = [];
     renderContainers();
+    updateSummaryCounts({ containerCount: 0 });
   }
 }
 
@@ -968,6 +993,7 @@ async function loadAllFirewallRules() {
   firewallLoading.classList.add('hidden');
   if (allRules.length === 0) {
     firewallEmpty.classList.remove('hidden');
+    updateSummaryCounts({ firewallCount: 0 });
   } else {
     renderFirewallRules(allRules);
   }
@@ -975,6 +1001,7 @@ async function loadAllFirewallRules() {
 
 function renderFirewallRules(rules) {
   firewallTableBody.innerHTML = '';
+  updateSummaryCounts({ firewallCount: rules.length });
   rules.forEach(rule => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
