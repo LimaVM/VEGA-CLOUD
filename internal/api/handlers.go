@@ -208,22 +208,12 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) getUser(r *http.Request) *database.User {
 	sessionID := auth.GetSessionFromRequest(r)
 
-	// DEBUG: Temporarily log auth check details
-	cookie, _ := r.Cookie(auth.SessionCookieName)
-	log.Printf("🔍 User Check [%s] | Cookie: %v", r.URL.Path, cookie)
-
 	if sessionID == "" {
-		if r.URL.Path == "/api/auth/me" {
-			log.Println("❌ getUser: No Session ID found in request")
-		}
 		return nil
 	}
 
 	user, err := auth.ValidateSession(sessionID)
 	if err != nil {
-		if r.URL.Path == "/api/auth/me" {
-			log.Printf("❌ getUser: Validation failed for SID %s: %v", sessionID, err)
-		}
 		return nil
 	}
 	return user

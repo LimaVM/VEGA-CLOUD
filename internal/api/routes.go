@@ -249,6 +249,7 @@ func (r *Router) Handler() http.Handler {
 	handler := http.Handler(r.mux)
 	handler = RateLimit(r.limiter)(handler)
 	handler = Logging(handler)
+	handler = SecurityHeaders(handler)
 	handler = CORS(handler)
 	return handler
 }
