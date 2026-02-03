@@ -20,7 +20,7 @@ var (
 )
 
 const (
-	SessionCookieName = "vega_session_v9_1_1"
+	SessionCookieName = "vega_session_v9_1_2"
 	SessionDuration   = 24 * time.Hour
 )
 
