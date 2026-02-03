@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupFirewall();
   setupModalTabs();
   setupMonitoring();
+  enforceAuthRoute();
   await checkAuth();
 });
 
@@ -94,11 +95,13 @@ async function checkAuth() {
       showDashboard();
       startStatusPoller(); // Start polling
     } else {
+      currentUser = null;
       showAuth();
     }
   } catch (err) {
     console.error('CheckAuth Error:', err);
     // showToast('Erro de conexão ao verificar login', 'error'); // Optional: show to user
+    currentUser = null;
     showAuth();
   }
 }
@@ -148,11 +151,17 @@ function startStatusPoller() {
 function showAuth() {
   authPage.classList.add('active');
   dashboardPage.classList.remove('active');
+  if (location.pathname !== '/login') {
+    history.replaceState({}, '', '/login');
+  }
 }
 
 function showDashboard() {
   authPage.classList.remove('active');
   dashboardPage.classList.add('active');
+  if (location.pathname === '/login') {
+    history.replaceState({}, '', '/');
+  }
 
   // Update user display
   const usernameDisplay = document.getElementById('username-display');
@@ -223,6 +232,12 @@ function showDashboard() {
     if (!document.getElementById('view-admin').classList.contains('hidden')) {
       document.querySelector('[data-view="containers"]').click();
     }
+  }
+}
+
+function enforceAuthRoute() {
+  if (!currentUser && location.pathname !== '/login') {
+    history.replaceState({}, '', '/login');
   }
 }
 
